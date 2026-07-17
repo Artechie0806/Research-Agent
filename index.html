@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Groundwork — find what's true</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#ffffff; --wash:#f6f7f7; --wash-2:#eef0f0;
+    --ink:#0b0c0e; --ink-soft:#2a2d31; --muted:#666c72; --faint:#9aa1a6;
+    --line:#e6e8e9; --line-2:#d5d8da;
+    --green:#0e9f57; --green-ink:#0a7a43; --green-bg:#e9f7ef;
+    --red:#e5484d; --red-ink:#c5342f; --red-bg:#fdecec;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:'Space Grotesk',system-ui,-apple-system,sans-serif;
+    --r:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--paper); color:var(--ink); font-family:var(--sans); line-height:1.5; -webkit-font-smoothing:antialiased}
+  a{color:inherit}
+  .mast-in{max-width:1120px; margin:0 auto; padding:0 24px}
+
+  /* Top bar — always present, pins on scroll */
+  .topbar{position:sticky; top:0; z-index:60; background:rgba(255,255,255,.86); backdrop-filter:blur(8px); border-bottom:1px solid var(--line)}
+  .topbar .mast-in{display:flex; align-items:center; justify-content:space-between; height:56px}
+  .brand{font-weight:700; font-size:20px; letter-spacing:-.02em; text-decoration:none; display:inline-flex; align-items:center}
+  .mark{width:8px; height:8px; background:var(--green); border-radius:2px; margin-left:7px}
+  .spec{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
+
+  /* Hero — big on the landing, collapses to a slim bar once a search runs */
+  .hero{position:relative; padding:clamp(36px,7vh,72px) 0 36px; text-align:center; transition:padding .25s ease}
+  .headline{font-size:clamp(26px,3.4vw,40px); font-weight:700; letter-spacing:-.02em; line-height:1.06; margin:0}
+  .headline .g{color:var(--green)}
+  .lede{max-width:470px; margin:12px auto 0; font-size:15px; color:var(--muted); line-height:1.5}
+
+  form#form{margin:34px auto 0; max-width:640px}
+  .search{display:flex; align-items:center; gap:8px; background:var(--paper); border:1.5px solid var(--ink); border-radius:16px; padding:7px 7px 7px 18px; transition:box-shadow .18s, border-color .18s}
+  .search:focus-within{border-color:var(--green); box-shadow:0 0 0 3px var(--green-bg)}
+  .search input{flex:1; min-width:0; height:50px; border:0; outline:0; background:transparent; font:inherit; font-size:17px; color:var(--ink)}
+  .search input::placeholder{color:var(--faint)}
+  .verify{height:48px; padding:0 24px; border:0; border-radius:11px; background:var(--ink); color:#fff; font-family:var(--sans); font-weight:600; font-size:15px; letter-spacing:.01em; cursor:pointer; white-space:nowrap; transition:transform .1s, background .2s}
+  .verify:hover{background:#000}
+  .verify:active{transform:translateY(1px)}
+  .verify:disabled{background:var(--muted); cursor:progress}
+
+  .controls{display:flex; gap:18px; align-items:center; justify-content:center; margin-top:14px; color:var(--muted); font-size:13.5px}
+  .controls select{font-family:var(--sans); font-size:13.5px; color:var(--ink); background:var(--paper); border:1px solid var(--line-2); border-radius:9px; padding:7px 10px; cursor:pointer}
+  .toggle{display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none}
+  .toggle input{accent-color:var(--green); width:16px; height:16px}
+
+  /* Floating trending-claim boxes — scattered around the hero, react to the mouse */
+  .floats{position:absolute; inset:0; pointer-events:none; overflow:visible; z-index:1; opacity:0; transition:opacity .7s ease}
+  .floats.on{opacity:1}
+  /* drift animates `transform`; the parallax JS sets the separate `translate`
+     property, so the two compose on one element — card, text and hit area all
+     move together instead of the text sliding around inside a static box. */
+  .float{position:absolute; width:clamp(148px, 15vw, 194px); text-align:center; background:var(--paper); border:1px solid var(--line); border-radius:12px; box-shadow:0 8px 24px rgba(10,12,14,.07); padding:0; cursor:pointer; pointer-events:auto; font-family:var(--sans); animation:drift 8s ease-in-out infinite; transition:translate .2s ease-out, box-shadow .2s, border-color .2s; will-change:translate, transform}
+  .hero .mast-in{position:relative; z-index:2}
+  .float:hover{border-color:var(--ink); box-shadow:0 16px 36px rgba(10,12,14,.14)}
+  /* tag and go are pinned to the edges, so the claim centres in the card and
+     nothing reflows when `verify →` fades in on hover */
+  .float-i{position:relative; display:flex; align-items:center; justify-content:center; min-height:124px; padding:26px 14px}
+  .ft-tag{position:absolute; top:10px; left:0; right:0; display:flex; align-items:center; justify-content:center; gap:6px; font-family:var(--mono); font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--faint)}
+  .ft-tag::before{content:""; width:6px; height:6px; border-radius:50%; background:var(--green)}
+  .ft-text{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; font-size:13px; line-height:1.42; color:var(--ink)}
+  .ft-go{position:absolute; bottom:9px; left:0; right:0; font-family:var(--mono); font-size:10.5px; color:var(--green-ink); opacity:0; transition:opacity .2s}
+  .float:hover .ft-go{opacity:1}
+  @keyframes drift{0%,100%{transform:translateY(0)} 50%{transform:translateY(-16px)}}
+  @media (prefers-reduced-motion:reduce){ .float{animation:none} }
+  body.run-mode .floats{display:none}
+
+  :focus-visible{outline:2px solid var(--green); outline-offset:2px}
+
+  /* Run mode — hero becomes a compact bar, results appear */
+  body.run-mode .hero{padding:16px 0; text-align:left; border-bottom:1px solid var(--line)}
+  body.run-mode .headline, body.run-mode .lede{display:none}
+  body.run-mode form#form{margin:0; max-width:none; display:flex; align-items:center; gap:16px}
+  body.run-mode .search{flex:1}
+  body.run-mode .search input{height:42px; font-size:15.5px}
+  body.run-mode .verify{height:40px; padding:0 20px}
+  body.run-mode .controls{margin-top:0; flex:0 0 auto}
+
+  .stage{display:none}
+  body.run-mode .stage{display:block; padding:26px 0 96px}
+
+  /* Pipeline — a real 4-step sequence, so it's numbered */
+  .pipe{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:24px}
+  .node{display:flex; align-items:center; gap:9px; padding:7px 14px; border:1px solid var(--line); border-radius:999px; color:var(--faint); font-size:13px; background:var(--paper); transition:.2s}
+  .node .n{width:19px; height:19px; border-radius:50%; display:grid; place-items:center; border:1px solid var(--line-2); font-family:var(--mono); font-size:11px; color:var(--faint)}
+  .node.active{color:var(--ink); border-color:var(--ink)}
+  .node.active .n{background:var(--ink); border-color:var(--ink); color:#fff}
+  .node.done{color:var(--green-ink); border-color:var(--green)}
+  .node.done .n{background:var(--green); border-color:var(--green); color:#fff}
+  .arm{width:18px; height:1px; background:var(--line-2)}
+  .round-badge{margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--muted)}
+
+  .grid{display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:28px; align-items:start}
+  aside{position:sticky; top:78px; display:flex; flex-direction:column; gap:16px}
+
+  /* Claim audit — the signature: each claim resolves green (holds up) or red (doesn't) */
+  .audit-h{display:flex; align-items:baseline; gap:12px; margin:2px 0 16px}
+  .audit-h h2{font-size:20px; font-weight:700; letter-spacing:-.015em; margin:0}
+  .audit-h .count{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .claim{background:var(--paper); border:1px solid var(--line); border-left:3px solid var(--line-2); border-radius:12px; padding:14px 16px; margin-bottom:12px; animation:rise .3s ease both}
+  @keyframes rise{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+  .claim.SUPPORTED{border-left-color:var(--green)}
+  .claim.PARTIAL{border-left-color:var(--muted)}
+  .claim.UNSUPPORTED{border-left-color:var(--red)}
+  .claim-top{display:flex; gap:12px; align-items:flex-start}
+  .cid{font-family:var(--mono); font-size:12px; color:var(--faint); padding-top:2px}
+  .ctext{flex:1; font-size:15px; line-height:1.5}
+  .badge{font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.02em; padding:4px 10px; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:5px}
+  .badge.PENDING{color:var(--muted); background:var(--wash); border:1px solid var(--line)}
+  .badge.SUPPORTED{color:var(--green-ink); background:var(--green-bg)}
+  .badge.PARTIAL{color:var(--ink); background:var(--wash); border:1px solid var(--line-2)}
+  .badge.UNSUPPORTED{color:var(--red-ink); background:var(--red-bg)}
+  .spin{display:inline-block; width:10px; height:10px; border:2px solid var(--line-2); border-top-color:var(--green); border-radius:50%; animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .claim-detail{margin-top:2px; display:none}
+  .claim-detail.show{display:block}
+  .reason{font-size:13.5px; color:var(--muted); margin:11px 0 9px}
+  .quote{font-family:var(--mono); font-size:12.5px; line-height:1.6; color:var(--ink); background:var(--wash); border-left:3px solid var(--green); border-radius:0 8px 8px 0; padding:10px 13px}
+  .quote.empty{color:var(--muted); background:var(--red-bg); border-left-color:var(--red)}
+  .qmeta{font-family:var(--mono); font-size:11px; margin-top:7px}
+  .qmeta.ok{color:var(--green-ink)} .qmeta.warn{color:var(--red-ink)}
+  .chips{margin-top:10px; display:flex; gap:6px; flex-wrap:wrap}
+  .chip{font-family:var(--mono); font-size:11px; text-decoration:none; color:var(--muted); border:1px solid var(--line-2); background:var(--paper); padding:2px 8px; border-radius:6px}
+  .chip:hover{border-color:var(--ink); color:var(--ink)}
+
+  .note{font-family:var(--mono); font-size:12px; color:var(--muted); background:var(--wash); border:1px solid var(--line); border-radius:8px; padding:9px 12px; margin-bottom:11px}
+  .err{font-size:14px; color:var(--red-ink); background:var(--red-bg); border:1px solid var(--red); border-radius:10px; padding:14px 16px; margin-bottom:16px}
+
+  /* Verified answer */
+  .report{background:var(--paper); border:1px solid var(--line); border-radius:16px; margin-top:26px; padding:28px 30px; box-shadow:0 10px 34px rgba(10,12,14,.06); animation:rise .4s ease both}
+  .report .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--green-ink); display:flex; align-items:center; gap:9px; margin-bottom:16px}
+  .report .eyebrow::before{content:"✓"; display:grid; place-items:center; width:18px; height:18px; border-radius:50%; background:var(--green); color:#fff; font-size:11px}
+  .report .eyebrow::after{content:""; flex:1; height:1px; background:var(--line)}
+  .answer{font-size:17px; line-height:1.72; max-width:66ch}
+  .answer p{margin:0 0 14px}
+  .cite{font-family:var(--mono); font-size:.74em; color:var(--green-ink); text-decoration:none; border-bottom:1px dotted var(--green); padding:0 1px; cursor:pointer}
+  .cite:hover{background:var(--green-bg)}
+  .refs{margin-top:22px; padding-top:16px; border-top:1px solid var(--line)}
+  .refs h4{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); margin:0 0 9px}
+  .refs a{display:block; font-family:var(--mono); font-size:12px; color:var(--muted); text-decoration:none; padding:3px 0}
+  .refs a:hover{color:var(--ink)}
+
+  /* Aside cards */
+  .card{background:var(--paper); border:1px solid var(--line); border-radius:14px}
+  .card h3{margin:0; padding:13px 16px; font-size:11px; letter-spacing:.07em; text-transform:uppercase; font-weight:600; color:var(--muted); border-bottom:1px solid var(--line)}
+  .card .body{padding:15px 16px}
+
+  .rate{display:flex; align-items:baseline; gap:8px}
+  .rate .big{font-size:44px; font-weight:700; letter-spacing:-.02em; line-height:1; color:var(--ink)}
+  .rate .lbl{color:var(--muted); font-size:12px}
+  .mgrid{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin-top:14px}
+  .mgrid div{display:flex; justify-content:space-between; font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .mgrid div b{color:var(--ink); font-weight:500}
+  .swatch{display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; vertical-align:middle}
+
+  .src-list{display:flex; flex-direction:column}
+  .src{display:block; padding:11px 16px; border-bottom:1px solid var(--line); text-decoration:none}
+  .src:last-child{border-bottom:0}
+  .src:hover{background:var(--wash)}
+  .src .sid{font-family:var(--mono); font-size:11px; color:var(--green-ink); margin-right:6px}
+  .src .st{font-size:13px}
+  .src .su{display:block; font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+  .gauge-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px}
+  .gauge-stage{font-family:var(--mono); font-size:11px; color:var(--ink); text-transform:uppercase; letter-spacing:.05em}
+  .gauge-num{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .gauge-num b{color:var(--ink)}
+  .bar{position:relative; height:14px; background:var(--wash-2); border-radius:8px; overflow:hidden}
+  .fill{position:absolute; inset:0 auto 0 0; width:0%; border-radius:8px; background:var(--green); transition:width .45s cubic-bezier(.2,.7,.2,1), background .3s}
+  .ceil{position:absolute; top:-4px; bottom:-4px; right:0; width:2px; background:var(--ink)}
+  .gauge-foot{display:flex; justify-content:space-between; margin-top:8px; font-family:var(--mono); font-size:10.5px; color:var(--faint)}
+  .ledger{margin-top:12px; border-top:1px dashed var(--line-2); padding-top:10px; display:flex; flex-direction:column; gap:5px; max-height:116px; overflow:auto}
+  .ledger .row{display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--muted)}
+  .ledger .row span:last-child{color:var(--ink)}
+
+  .flash{animation:flash 1.1s ease}
+  @keyframes flash{0%{box-shadow:0 0 0 3px var(--green)} 100%{box-shadow:none}}
+  .hidden{display:none}
+
+  /* Center the hero content vertically so the boxes can ring it top, sides & bottom */
+  body:not(.run-mode) .hero{min-height:78vh; display:flex; flex-direction:column; align-items:center; justify-content:center}
+  /* No room to ring the hero — drop the decoration rather than let it size the page */
+  @media (max-width:960px), (max-height:560px){ .floats{display:none} }
+
+  @media (max-width:900px){
+    .grid{grid-template-columns:1fr}
+    aside{position:static}
+  }
+  @media (max-width:620px){
+    body.run-mode form#form{flex-direction:column; align-items:stretch}
+    body.run-mode .controls{flex-wrap:wrap}
+    .headline{font-size:clamp(34px,11vw,54px)}
+    .verify{padding:0 18px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="mast-in">
+    <a class="brand" href="/">Groundwork<span class="mark"></span></a>
+    <span class="spec">actor → critic · 16k window</span>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="floats" id="floats"></div>
+  <div class="mast-in">
+    <h1 class="headline">Find what's true<span class="g">.</span></h1>
+    <p class="lede">Ask a checkable question. Groundwork searches the web, breaks the answer into atomic claims, and verifies each one against its own sources — keeping only what holds up.</p>
+
+    <form id="form" autocomplete="off">
+      <div class="search">
+        <input id="query" name="query" placeholder="Ask something checkable…" />
+        <button class="verify" id="run" type="submit">Verify</button>
+      </div>
+      <div class="controls">
+        <label class="toggle" title="Keep partially-supported claims instead of dropping them">
+          <input type="checkbox" id="partial" /> keep partial claims
+        </label>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="stage">
+  <div class="mast-in">
+    <div class="pipe hidden" id="pipe">
+      <div class="node" data-stage="search"><span class="n">1</span>Search</div>
+      <div class="arm"></div>
+      <div class="node" data-stage="draft"><span class="n">2</span>Draft</div>
+      <div class="arm"></div>
+      <div class="node" data-stage="verify"><span class="n">3</span>Verify</div>
+      <div class="arm"></div>
+      <div class="node" data-stage="assemble"><span class="n">4</span>Assemble</div>
+    </div>
+
+    <div id="errBox"></div>
+
+    <div class="grid">
+      <main>
+        <section id="auditWrap" class="hidden">
+          <div class="audit-h">
+            <h2>Claim audit</h2>
+            <span class="count" id="auditCount"></span>
+          </div>
+          <div id="notes"></div>
+          <div id="claims"></div>
+        </section>
+
+        <article id="report" class="report hidden">
+          <div class="eyebrow">Verified answer</div>
+          <div class="answer" id="answer"></div>
+          <div class="refs hidden" id="refsWrap">
+            <h4>Sources cited</h4>
+            <div id="refs"></div>
+          </div>
+        </article>
+      </main>
+
+      <aside>
+        <div class="card">
+          <h3>Result</h3>
+          <div class="body">
+            <div class="rate"><span class="big" id="rate">—</span><span class="lbl">grounding rate</span></div>
+            <div class="mgrid" id="mgrid">
+              <div><span><span class="swatch" style="background:var(--green)"></span>supported</span><b id="mSup">0</b></div>
+              <div><span><span class="swatch" style="background:var(--muted)"></span>partial</span><b id="mPar">0</b></div>
+              <div><span><span class="swatch" style="background:var(--red)"></span>unsupported</span><b id="mUns">0</b></div>
+              <div><span>dropped</span><b id="mDrop">0</b></div>
+              <div><span>peak ctx</span><b id="mPeak">0</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Sources</h3>
+          <div class="src-list" id="srcList"><div class="body" style="color:var(--faint);font-size:13px">None yet.</div></div>
+        </div>
+
+        <div class="card gauge">
+          <h3>Context budget</h3>
+          <div class="body">
+            <div class="gauge-head">
+              <span class="gauge-stage" id="gStage">idle</span>
+              <span class="gauge-num"><b id="gCall">0</b> / <span id="gMax">16,000</span></span>
+            </div>
+            <div class="bar"><div class="fill" id="gFill"></div><div class="ceil"></div></div>
+            <div class="gauge-foot"><span>this call</span><span id="gCum">0 tokens spent total</span></div>
+            <div class="ledger" id="ledger"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (t,c) => { const e=document.createElement(t); if(c) e.className=c; return e; };
+const fmt = n => Number(n||0).toLocaleString();
+
+const form=$("#form"), runBtn=$("#run");
+let es=null, claimNodes={}, sourceMap={}, maxContext=16000;
+
+form.addEventListener("submit", e=>{ e.preventDefault(); start(); });
+// Floating trending-claim boxes around the hero (best-effort; fade in when ready)
+const floatsEl=$("#floats");
+// A ring around the centred hero text: two along the top, one on each side, two along the bottom.
+// Each is [top|bottom, left|right], as a % of the hero. The bottom row anchors on
+// `bottom` so it grows up into the hero: a box is a fixed 124px tall while the hero
+// scales with the window, so anchoring it by `top` let it hang off the bottom edge on
+// short windows and stretch the page into a scrollbar.
+const FLOAT_POS=[{top:"11%",   left:"13%"}, {top:"9%",     right:"13%"},
+                 {top:"43%",   left:"3%"},  {top:"47%",    right:"3%"},
+                 {bottom:"5%", left:"16%"}, {bottom:"2%",  right:"14%"}];
+const FALLBACK_CLAIMS=[
+  "The Great Wall of China is visible from space with the naked eye.",
+  "Humans use only 10 percent of their brains.",
+  "Goldfish have a memory span of just three seconds.",
+  "Lightning never strikes the same place twice.",
+  "Mount Everest is the tallest mountain on Earth from base to peak.",
+  "Napoleon Bonaparte was unusually short for his time."
+];
+// A page load usually beats the server's news fetch, so the first response can
+// be fallbacks. Keep polling until the live batch lands, then swap the boxes.
+let floatsKey="";
+loadFloats(0);
+function loadFloats(attempt){
+  fetch("/api/trending").then(r=>r.ok?r.json():{claims:[],live:false})
+    .then(d=>{
+      renderFloats(d.claims&&d.claims.length?d.claims:FALLBACK_CLAIMS);
+      if(!d.live && attempt<15)
+        setTimeout(()=>loadFloats(attempt+1), Math.min(2000*Math.pow(1.4,attempt), 8000));
+    })
+    .catch(()=>renderFloats(FALLBACK_CLAIMS));
+}
+
+function renderFloats(claims){
+  if(!claims.length || !floatsEl) return;
+  const key=claims.join("|");
+  if(key===floatsKey) return;   // same batch — don't re-run the fade-in
+  floatsKey=key;
+  floatsEl.innerHTML="";
+  claims.slice(0,FLOAT_POS.length).forEach((c,i)=>{
+    const p=FLOAT_POS[i];
+    const b=el("button","float"); b.type="button";
+    if(p.top) b.style.top=p.top; else b.style.bottom=p.bottom;
+    if(p.left) b.style.left=p.left; else b.style.right=p.right;
+    b.dataset.depth = 30 + (i%3)*18;   // varied parallax depth (px shift at screen edge)
+    b.style.animationDelay = (-i*1.3)+"s";   // drift the whole card, staggered
+    b.innerHTML='<span class="float-i">'+
+      '<span class="ft-tag">trending</span>'+
+      '<span class="ft-text">'+esc(c)+'</span>'+
+      '<span class="ft-go">verify →</span></span>';
+    b.title="Verify: "+c;
+    b.addEventListener("click",()=>{ $("#query").value=c; start(); });
+    floatsEl.appendChild(b);
+  });
+  requestAnimationFrame(()=>floatsEl.classList.add("on"));
+  enableParallax();
+}
+
+let parallaxOn=false;
+function enableParallax(){
+  if(parallaxOn) return;   // boxes re-render on refresh; the listener is global
+  if(matchMedia("(prefers-reduced-motion:reduce)").matches) return;
+  parallaxOn=true;
+  let queued=false, mx=0, my=0;
+  window.addEventListener("mousemove",e=>{
+    mx=(e.clientX/window.innerWidth-0.5)*2;    // -1..1 from centre
+    my=(e.clientY/window.innerHeight-0.5)*2;
+    if(!queued){ queued=true; requestAnimationFrame(apply); }
+  }, {passive:true});
+  function apply(){
+    queued=false;
+    floatsEl.querySelectorAll(".float").forEach(b=>{
+      const d=+b.dataset.depth||12;
+      // `translate`, not `transform` — the drift keyframes own transform.
+      b.style.translate=(-mx*d).toFixed(1)+"px "+(-my*d).toFixed(1)+"px";
+    });
+  }
+}
+
+function reset(){
+  claimNodes={}; sourceMap={};
+  $("#pipe").classList.remove("hidden");
+  $("#auditWrap").classList.remove("hidden");
+  $("#report").classList.add("hidden");
+  $("#refsWrap").classList.add("hidden");
+  $("#errBox").innerHTML="";
+  $("#claims").innerHTML=""; $("#notes").innerHTML=""; $("#answer").innerHTML=""; $("#refs").innerHTML="";
+  $("#auditCount").textContent="";
+  $("#srcList").innerHTML='<div class="body" style="color:var(--faint);font-size:13px">Searching…</div>';
+  $("#ledger").innerHTML="";
+  $("#rate").textContent="—"; $("#rate").style.color="var(--ink)";
+  ["mSup","mPar","mUns","mDrop","mPeak"].forEach(id=>$("#"+id).textContent="0");
+  document.querySelectorAll(".node").forEach(n=>n.classList.remove("active","done"));
+  setGauge("idle",0);
+}
+
+function start(){
+  const q=$("#query").value.trim(); if(!q) return;
+  if(es) es.close();
+  document.body.classList.add("run-mode");
+  reset();
+  runBtn.disabled=true; runBtn.textContent="Verifying…";
+  const p=new URLSearchParams({query:q, max_rounds:1,
+    keep_partial:$("#partial").checked, max_context:16000});
+  es=new EventSource("/api/research?"+p.toString());
+  es.onmessage=ev=>handle(JSON.parse(ev.data));
+  es.onerror=()=>{ if(runBtn.disabled){ fail("Lost the connection to the server. Make sure it's still running, then try again."); } };
+}
+
+function finish(){ runBtn.disabled=false; runBtn.textContent="Verify"; if(es) es.close(); }
+function fail(msg){ $("#errBox").innerHTML='<div class="err">'+msg+'</div>'; finish(); }
+
+const stageOrder=["search","draft","verify","assemble"];
+function setStage(stage){
+  const idx=stageOrder.indexOf(stage);
+  document.querySelectorAll(".node").forEach(n=>{
+    const i=stageOrder.indexOf(n.dataset.stage);
+    n.classList.toggle("active", i===idx);
+    n.classList.toggle("done", i<idx);
+  });
+}
+
+function setGauge(stage, callTokens){
+  const pct=Math.min(100, Math.round(callTokens/maxContext*100));
+  const fill=$("#gFill");
+  fill.style.width=pct+"%";
+  fill.style.background = pct>85 ? "var(--red)" : "var(--green)";
+  $("#gStage").textContent=stage;
+  $("#gCall").textContent=fmt(callTokens);
+}
+
+function handle(m){
+  switch(m.type){
+    case "start":
+      maxContext=m.max_context||16000; $("#gMax").textContent=fmt(maxContext);
+      break;
+    case "status":
+      setStage(m.stage);
+      break;
+    case "context":{
+      setGauge(m.stage, m.call_tokens);
+      $("#gCum").textContent=fmt(m.cumulative_tokens)+" tokens spent total";
+      const row=el("div","row");
+      row.innerHTML='<span>'+m.stage+'</span><span>'+fmt(m.call_tokens)+' / '+fmt(m.max_context)+'</span>';
+      $("#ledger").prepend(row);
+      break;
+    }
+    case "sources":{
+      m.sources.forEach(s=>sourceMap[s.id]=s);
+      renderSources();
+      break;
+    }
+    case "note":
+      $("#notes").appendChild(Object.assign(el("div","note"),{textContent:m.message}));
+      break;
+    case "requery":{
+      const d=el("div","note");
+      d.textContent="↻ re-researching "+m.failed+" unsupported claim(s) with a focused query";
+      $("#notes").appendChild(d);
+      break;
+    }
+    case "claims":
+      m.claims.forEach(addClaim);
+      updateCount();
+      break;
+    case "verdict":
+      resolveClaim(m);
+      break;
+    case "report":
+      renderReport(m.report, m.references);
+      break;
+    case "metrics":
+      renderMetrics(m);
+      break;
+    case "done":
+      document.querySelectorAll(".node").forEach(n=>{n.classList.remove("active"); n.classList.add("done");});
+      finish();
+      break;
+    case "error":
+      fail(m.message);
+      break;
+  }
+}
+
+function renderSources(){
+  const list=$("#srcList"); list.innerHTML="";
+  const ids=Object.keys(sourceMap).sort((a,b)=>+a.slice(1)-+b.slice(1));
+  if(!ids.length){ list.innerHTML='<div class="body" style="color:var(--faint);font-size:13px">None yet.</div>'; return; }
+  ids.forEach(id=>{
+    const s=sourceMap[id];
+    const a=el("a","src"); a.href=s.url; a.target="_blank"; a.rel="noopener";
+    a.innerHTML='<span class="sid">['+s.id+']</span><span class="st">'+esc(s.title)+'</span><span class="su">'+esc(s.url)+'</span>';
+    list.appendChild(a);
+  });
+}
+
+function addClaim(c){
+  const node=el("div","claim PENDING"); node.id="claim-"+c.id;
+  node.innerHTML=
+    '<div class="claim-top">'+
+      '<span class="cid">'+c.id+'</span>'+
+      '<span class="ctext">'+esc(c.text)+'</span>'+
+      '<span class="badge PENDING"><span class="spin"></span>checking</span>'+
+    '</div>'+
+    '<div class="claim-detail" id="detail-'+c.id+'"></div>';
+  $("#claims").appendChild(node);
+  claimNodes[c.id]={sources:c.source_ids};
+}
+
+function resolveClaim(v){
+  const node=$("#claim-"+v.claim_id); if(!node) return;
+  node.classList.remove("PENDING"); node.classList.add(v.verdict);
+  const glyph={SUPPORTED:"✓",PARTIAL:"≈",UNSUPPORTED:"✗"}[v.verdict]||"";
+  node.querySelector(".badge").outerHTML='<span class="badge '+v.verdict+'">'+glyph+' '+v.verdict+'</span>';
+  const chips=(claimNodes[v.claim_id]?.sources||[]).map(sid=>{
+    const s=sourceMap[sid];
+    const href=s?('href="'+s.url+'" target="_blank" rel="noopener"'):'';
+    return '<a class="chip" '+href+'>['+sid+']</a>';
+  }).join("");
+  const q=v.supporting_quote?.trim();
+  const quoteHtml=q
+    ? '<div class="quote">“'+esc(q)+'”</div>'+
+      (v.quote_found
+        ? '<div class="qmeta ok">✓ quote located verbatim in source</div>'
+        : '<div class="qmeta warn">⚠ quote not found in source — verdict downgraded</div>')
+    : '<div class="quote empty">no supporting quote — nothing in the source backs this</div>';
+  $("#detail-"+v.claim_id).innerHTML=
+    '<div class="reason">'+esc(v.reason)+'</div>'+quoteHtml+
+    (chips?'<div class="chips">'+chips+'</div>':'');
+  $("#detail-"+v.claim_id).classList.add("show");
+  updateCount();
+}
+
+function updateCount(){
+  const total=document.querySelectorAll(".claim").length;
+  const done=document.querySelectorAll(".claim.SUPPORTED,.claim.PARTIAL,.claim.UNSUPPORTED").length;
+  $("#auditCount").textContent=done<total?done+" / "+total+" checked":total+" claims";
+}
+
+function renderReport(text, refs){
+  $("#report").classList.remove("hidden");
+  const withCites=esc(text).replace(/\[c(\d+)\]/g,(_,n)=>
+    '<a class="cite" data-c="c'+n+'">[c'+n+']</a>');
+  $("#answer").innerHTML=withCites.split(/\n{2,}/).map(p=>"<p>"+p.replace(/\n/g,"<br>")+"</p>").join("");
+  $("#answer").querySelectorAll(".cite").forEach(a=>a.addEventListener("click",()=>{
+    const t=$("#claim-"+a.dataset.c);
+    if(t){ t.scrollIntoView({behavior:"smooth",block:"center"}); t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash"); }
+  }));
+  if(refs && refs.trim()){
+    $("#refsWrap").classList.remove("hidden");
+    $("#refs").innerHTML=refs.split("\n").filter(Boolean).map(line=>{
+      const url=(line.match(/https?:\/\/\S+/)||[""])[0];
+      return '<a href="'+url+'" target="_blank" rel="noopener">'+esc(line)+'</a>';
+    }).join("");
+  }
+}
+
+function renderMetrics(m){
+  const pct=Math.round((m.grounding_rate||0)*100);
+  const r=$("#rate"); r.textContent=pct+"%";
+  r.style.color = pct>=66 ? "var(--green)" : pct<34 ? "var(--red)" : "var(--ink)";
+  $("#mSup").textContent=m.supported; $("#mPar").textContent=m.partial;
+  $("#mUns").textContent=m.unsupported; $("#mDrop").textContent=m.dropped;
+  $("#mPeak").textContent=fmt(m.context_peak);
+}
+
+function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+</script>
+</body>
+</html>
