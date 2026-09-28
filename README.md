@@ -70,15 +70,29 @@ frontend/
 ```bash
 pip install -r requirements.txt
 
-# Fill in .env (already scaffolded in this folder):
-#   QWEN_API_URL    your self-hosted Qwen wrapper base URL (default http://127.0.0.1:8000)
+# Fill in .env with ONE of these:
+#
+# Any OpenAI-compatible API (OpenAI, vLLM, Ollama, LM Studio, OpenRouter, ...):
+#   LLM_PROVIDER=openai
+#   OPENAI_BASE_URL   e.g. https://api.openai.com/v1 or http://localhost:11434/v1
+#   OPENAI_API_KEY    bearer token (can be blank for local servers)
+#   OPENAI_MODEL      e.g. gpt-4o-mini, qwen2.5:14b
+#   (optional) OPENAI_MAX_TOKENS_PARAM=max_completion_tokens  for OpenAI reasoning models
+#   (optional) OPENAI_JSON_MODE=0  if the server rejects response_format
+#   (optional) OPENAI_REASONING_EFFORT=none  for thinking models (e.g. Qwen3.x in LM Studio)
+#
+# Or the self-hosted Qwen wrapper:
+#   LLM_PROVIDER=qwen
+#   QWEN_API_URL    wrapper base URL (default http://127.0.0.1:8000)
 #   QWEN_API_KEY    the api-key your wrapper expects
 
 uvicorn server:app --reload
 ```
 
-The agent talks to your self-hosted Qwen wrapper's `POST /chat/text` endpoint (see
-`llm.py`) instead of a hosted LLM API. Web search is **keyless** — DuckDuckGo (the
+The agent talks to either an OpenAI-compatible `POST /chat/completions` endpoint or
+your self-hosted Qwen wrapper's `POST /chat/text` endpoint (see `llm.py`). If
+`LLM_PROVIDER` is unset, it uses OpenAI format when `OPENAI_API_KEY` or
+`OPENAI_BASE_URL` is set, otherwise the Qwen wrapper. Web search is **keyless** — DuckDuckGo (the
 `ddgs` package) finds URLs and `trafilatura` extracts each page's article text
 (see `search.py`), so no search API key is needed.
 
@@ -96,13 +110,44 @@ with their evidence quote, while the context gauge shows each call's size agains
 
 - **Search provider:** implement `.search(query, k) -> list[Source]` (see `search.py`)
   for Brave, SerpAPI, or DuckDuckGo + your own fetcher. Everything else is unchanged.
-- **LLM endpoint / budgets:** point `QWEN_API_URL` at any wrapper that exposes the same
-  `/chat/text` contract; the `*_OUTPUT` constants and `Budget(...)` are the other knobs
+- **LLM endpoint / budgets:** set `LLM_PROVIDER=openai` and point `OPENAI_BASE_URL` /
+  `OPENAI_MODEL` at any OpenAI-compatible server, or point `QWEN_API_URL` at a wrapper
+  with the same `/chat/text` contract; the `*_OUTPUT` constants and `Budget(...)` are the other knobs
   (`max_context` is passed per request from the UI).
+
+## Planner and run limits
+
+Each run starts with a **planner** call that decides whether the input is a
+question or a statement to fact-check, restates it as one focus question, and
+splits it into 1-4 sub-questions. One researcher per sub-question searches and
+drafts in parallel; the verifier, consistency check and writer then work on the
+merged claims. Statements get an explicit verdict (Supported / Partly supported
+/ Not supported / Unverifiable) as the first line of the answer.
+
+Run size is capped in `agent.py`: `MAX_SOURCES` (20 pages per run),
+`MAX_CLAIMS` (12 claims per round) and `ENOUGH_VERIFIED` (skip the follow-up
+round once enough claims hold up). Most of a run's time is verify calls, so
+`MAX_CLAIMS` is the main speed knob. Web searches run one at a time because
+DuckDuckGo drops parallel bursts.
+
+## Eval
+
+`eval/run_eval.py` scores the verifier and the cross-claim consistency check on
+hand-labelled cases (`eval/*_cases.json`, fictional entities so the model can't
+answer from memory). No web search, about a minute against a local model:
+
+```bash
+python eval/run_eval.py              # both suites
+python eval/run_eval.py --runs 3     # repeat to smooth out model randomness
+EVAL_ROOT=/path/to/other/checkout python eval/run_eval.py   # score another version
+```
+
+Watch **false SUPPORTED** (an unsupported fact reaching the answer) and
+**false reject** first. When a live run shows a new failure, add it as a case.
 
 ## Known limits / next steps
 
 - Heuristic token counting (swap for an exact tokenizer for tighter packing).
-- Re-research derives sub-queries naively from failed claim text.
-- No eval harness yet — a frozen 30-task set with a scorer that reports grounding
-  rate would let you prove a prompt change actually helped, and catch regressions.
+- Round 2 can re-draft claims already verified in round 1 (harmless, but noisy).
+- Publish dates come from page metadata; some pages have none ("unknown").
+- The eval covers the verifier and consistency check, not search or drafting.

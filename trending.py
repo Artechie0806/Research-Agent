@@ -1,7 +1,7 @@
 """Latest trending / controversial checkable claims for the landing page.
 
 Searches DuckDuckGo *news* (keyless) for the last few days of contested stories,
-keeps only the freshest headlines, then asks the Qwen wrapper to distill them
+keeps only the freshest headlines, then asks the LLM to distill them
 into short, self-contained claims a user could actually verify. Results are
 cached in-process so page loads don't re-run search + LLM every time.
 
@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 from ddgs import DDGS
 
-from llm import QwenClient
+from llm import LLMClient, make_client
 
 # Angles on "currently contested", spread across domains so the six boxes don't
 # all end up being the same story.
@@ -158,12 +158,12 @@ def _headline_claims(items: list[dict], n: int) -> list[str]:
     return [_shorten(h["title"]) for h in items[:n]]
 
 
-def _do_fetch(n: int, client: QwenClient | None) -> None:
+def _do_fetch(n: int, client: LLMClient | None) -> None:
     """Blocking live search + LLM; update the cache on success."""
     items = _headlines()
     if not items:
         return
-    client = client or QwenClient()
+    client = client or make_client()
     today = datetime.now(timezone.utc).strftime("%d %B %Y")
     listing = "\n".join(f"- [{_ago(h['age'])}] {h['title']}"
                         + (f" — {h['body']}" if h["body"] else "")
@@ -197,7 +197,7 @@ def _do_fetch(n: int, client: QwenClient | None) -> None:
         _cache.update(claims=claims, at=time.time(), live=live)
 
 
-def _kick_refresh(n: int, client: QwenClient | None) -> None:
+def _kick_refresh(n: int, client: LLMClient | None) -> None:
     """Refresh the cache in the background; at most one refresh runs at a time."""
     if not _refresh_lock.acquire(blocking=False):
         return
@@ -215,7 +215,7 @@ def is_live() -> bool:
     return bool(_cache["claims"]) and _cache["live"]
 
 
-def get_trending_claims(n: int = 6, client: QwenClient | None = None) -> list[str]:
+def get_trending_claims(n: int = 6, client: LLMClient | None = None) -> list[str]:
     """Return claims immediately — never blocks on the network, never empty.
 
     A fresh cache is served as-is; a stale or empty cache is refreshed in the

@@ -11,6 +11,12 @@ class Source:
     url: str
     title: str
     content: str  # extracted page text (may be large; budgeted at use-time)
+    published: str = ""  # ISO date from page metadata, "" if unknown
+
+    @property
+    def dated(self) -> str:
+        """Human label for prompts: 'published 2025-03-04' or 'publish date unknown'."""
+        return f"published {self.published}" if self.published else "publish date unknown"
 
     def to_public(self) -> dict:
         """What we ship to the browser — never the full page text."""
@@ -18,7 +24,7 @@ class Source:
         if len(self.content) > 220:
             snippet += "…"
         return {"id": self.id, "url": self.url, "title": self.title,
-                "snippet": snippet}
+                "snippet": snippet, "published": self.published}
 
 
 @dataclass
@@ -56,6 +62,7 @@ class Metrics:
     input_tokens: int = 0        # estimated (wrapper reports no usage)
     output_tokens: int = 0
     context_peak: int = 0        # largest single-call prompt we sent (tokens)
+    conflicts: int = 0           # pairs/groups of verified claims that disagree
 
     @property
     def grounding_rate(self) -> float:
@@ -72,7 +79,19 @@ class Metrics:
                 "input_tokens": self.input_tokens,
                 "output_tokens": self.output_tokens,
                 "context_peak": self.context_peak,
+                "conflicts": self.conflicts,
                 "grounding_rate": self.grounding_rate}
+
+
+@dataclass
+class Conflict:
+    claim_ids: list[str]
+    explanation: str
+    current: str = ""  # claim id that reflects the latest state, if determinable
+
+    def to_dict(self) -> dict:
+        return {"claim_ids": self.claim_ids, "explanation": self.explanation,
+                "current": self.current}
 
 
 @dataclass
@@ -84,3 +103,4 @@ class ResearchResult:
     verdicts: dict[str, Verdict] = field(default_factory=dict)
     sources: dict[str, Source] = field(default_factory=dict)
     metrics: Metrics = field(default_factory=Metrics)
+    conflicts: list[Conflict] = field(default_factory=list)

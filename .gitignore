@@ -1,0 +1,15 @@
+# Secrets / local config
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated launch videos (/brag)
+brag-output*/
+
+# Eval result dumps (python eval/run_eval.py --json out.json)
+eval/*.out.json

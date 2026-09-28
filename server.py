@@ -22,10 +22,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from agent import ResearchAgent
 from context import Budget
+from llm import missing_config
 from search import DuckDuckGoSearch
 from trending import get_trending_claims, is_live
 
-load_dotenv()  # read .env for QWEN_API_URL / QWEN_API_KEY (search is keyless)
+load_dotenv()  # read .env for LLM settings (see llm.py; search is keyless)
 
 def _prewarm_trending() -> None:
     try:
@@ -72,7 +73,7 @@ async def research(request: Request, query: str, max_rounds: int = 2,
     def sse(event: dict) -> str:
         return f"data: {json.dumps(event)}\n\n"
 
-    missing = [k for k in ("QWEN_API_KEY",) if not os.getenv(k)]
+    missing = missing_config()
     if missing:
         async def err():
             yield sse({"type": "error",
